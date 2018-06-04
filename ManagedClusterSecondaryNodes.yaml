@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation template for adding secondary nodes to Dynatrace Managed cluster 
+Parameters:
+ MasterNodeStackName:
+  Description: Enter the stack name used for the Master node installer.
+  Type: String 
+Resources:
+ ManagedNodeB:
+  Type: AWS::EC2::Instance
+  CreationPolicy:
+    ResourceSignal:
+     Count: '1'
+     Timeout: PT15M
+  Properties:
+   AvailabilityZone: us-east-1b
+   ImageId: ami-14c5486b
+   InstanceType: t2.2xlarge
+   KeyName: EastUS1
+   UserData:
+    Fn::Base64:
+     Fn::Sub:
+      - |
+        #!/bin/bash -x 
+        yum update -y 
+        yum install wget -y 
+        wget --no-check-certificate -O /tmp/dynatrace-managed.sh https://"${MasterNodePublicIp}"/nodeinstaller 
+        echo "The installer URL is https://${MasterNodePublicIp}/nodeinstaller" > /tmp/log.txt
+        curl -u admin:P@ssword123 -k https://"${MasterNodePublicIp}"/api/v1.0/onpremise/tokens > /tmp/token.txt
+        (cut -d : -f2 /tmp/token.txt | cut -d "," -f1 | sed 's/\"//g') > /tmp/tokenOut.txt
+        /bin/sh /tmp/dynatrace-managed.sh --seed-auth `cat /tmp/tokenOut.txt` --install-silent
+        echo "The auth token is" > tmp/log.txt
+        echo "" > tmp/log.txt
+        /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ManagedNodeB --region ${AWS::Region}
+      - MasterNodePublicIp: 
+         Fn::ImportValue: !Sub "${MasterNodeStackName}-PublicIpMasterNodeOut"
+   NetworkInterfaces:
+    - AssociatePublicIpAddress: "true"
+      DeviceIndex: "0"
+      SubnetId:
+       Fn::ImportValue: !Sub "${MasterNodeStackName}-SubnetManagedNodeB"
+      GroupSet:
+       - Fn::ImportValue: !Sub "${MasterNodeStackName}-ManagedSecurityGroupId"
+   BlockDeviceMappings: 
+          - DeviceName: "/dev/xvda"
+            Ebs: 
+              VolumeType: "io1"
+              Iops: "200"
+              DeleteOnTermination: "false"
+              VolumeSize: "100"
+ ManagedNodeC:
+  Type: AWS::EC2::Instance
+  CreationPolicy:
+    ResourceSignal:
+     Count: '1'
+     Timeout: PT15M
+  Properties:
+   AvailabilityZone: us-east-1c
+   ImageId: ami-14c5486b
+   InstanceType: t2.2xlarge
+   KeyName: EastUS1
+   UserData:
+    Fn::Base64:
+     Fn::Sub:
+      - |
+        #!/bin/bash -x
+        yum update -y
+        yum install wget -y
+        curl -u admin:P@ssword123 -k https://"${MasterNodePublicIp}"/api/v1.0/onpremise/tokens > /tmp/token.txt
+        (cut -d : -f2 /tmp/token.txt | cut -d "," -f1 | sed 's/\"//g') > /tmp/tokenOut.txt
+        wget --no-check-certificate -O /tmp/dynatrace-managed.sh https://"${MasterNodePublicIp}"/nodeinstaller 
+        echo "The installer URL is https://${MasterNodePublicIp}/nodeinstaller" > /tmp/log.txt
+        /bin/sh /tmp/dynatrace-managed.sh --seed-auth `cat /tmp/tokenOut.txt` --install-silent
+        echo "The auth token is " > tmp/log.txt
+        echo "" > tmp/log.txt
+        /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ManagedNodeC --region ${AWS::Region}
+      - MasterNodePublicIp: 
+         Fn::ImportValue: !Sub "${MasterNodeStackName}-PublicIpMasterNodeOut"
+   NetworkInterfaces:
+    - AssociatePublicIpAddress: "true"
+      DeviceIndex: "0"
+      SubnetId:
+       Fn::ImportValue: !Sub "${MasterNodeStackName}-SubnetManagedNodeC"
+      GroupSet: 
+       - Fn::ImportValue: !Sub "${MasterNodeStackName}-ManagedSecurityGroupId"
+   BlockDeviceMappings: 
+          - DeviceName: "/dev/xvda"
+            Ebs: 
+              VolumeType: "io1"
+              Iops: "200"
+              DeleteOnTermination: "false"
+              VolumeSize: "100"
