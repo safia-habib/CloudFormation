@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation template for creating the network resources and Managed node Master
+Parameters:
+ DynatraceInstallerURL:
+  Type: String
+  Description: Enter the wget URL for Dynatrace Managed Master node. This is available in the email you receive from Dynatrace. Value is only the URL not the wget command. 
+ InitialEmail:
+  Type: String
+  Description: The initial email of the admin for sending cluster related events. 
+ InitialPassword:
+  Type: String
+  NoEcho: true
+  Description: The password for the admin account
+ InitialfirstName:
+  Type: String
+  Description: First name of the admin
+ InitialLastName:
+  Type: String
+  Description: Last name of the admin
+ LicenseKey:
+  Type: String
+  Description: Please endter the License key you received in the email from Dynatrace Team for your Managed cluster installation. 
+Resources:
+ ManagedNodeMaster: #Master node specifications
+  Type: AWS::EC2::Instance
+  CreationPolicy:
+    ResourceSignal:
+     Count: '1'
+     Timeout: PT15M
+  Properties:
+   AvailabilityZone: us-east-1a
+   ImageId: ami-14c5486b
+   InstanceType: t2.2xlarge
+   KeyName: EastUS1
+   UserData:
+    Fn::Base64:
+     !Sub |
+      #!/bin/bash -x
+      yum update -y
+      yum install wget -y
+      wget -O /tmp/dynatrace-managed.sh "${DynatraceInstallerURL}"
+      /bin/sh /tmp/dynatrace-managed.sh --install-silent --initial-environment test --initial-first-name ${InitialfirstName} --initial-last-name ${InitialLastName} --initial-email ${InitialEmail} --initial-pass ${InitialPassword} --license ${LicenseKey}
+      /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ManagedNodeMaster --region ${AWS::Region}
+   NetworkInterfaces:
+    - AssociatePublicIpAddress: "true"
+      DeviceIndex: "0"
+      SubnetId: !Ref SubnetManagedNode
+      GroupSet:
+       - !Ref ManagedNodeSecurityGroup
+   BlockDeviceMappings: 
+          - DeviceName: "/dev/xvda"
+            Ebs: 
+              VolumeType: "io1"
+              Iops: "200"
+              DeleteOnTermination: "false"
+              VolumeSize: "100"
+ VPCManagedNode: #Creating the VPC for the Managed Nodes
+  Type: AWS::EC2::VPC
+  Properties:
+   CidrBlock: 192.31.0.0/16
+   EnableDnsHostnames: true
+   EnableDnsSupport: true
+   InstanceTenancy: default
+ InternetGateway:
+  Type: AWS::EC2::InternetGateway
+ VPCGatewayAttachment:
+  Type: AWS::EC2::VPCGatewayAttachment
+  Properties:
+   VpcId: !Ref VPCManagedNode
+   InternetGatewayId: !Ref InternetGateway
+ SubnetManagedNode:
+  Type: AWS::EC2::Subnet
+  Properties:
+   AvailabilityZone: us-east-1a
+   VpcId: !Ref VPCManagedNode
+   CidrBlock: 192.31.16.0/20
+   MapPublicIpOnLaunch: true
+ SubnetManagedNodeB:
+  Type: AWS::EC2::Subnet
+  Properties:
+   AvailabilityZone: us-east-1b
+   VpcId: !Ref VPCManagedNode
+   CidrBlock: 192.31.32.0/20
+   MapPublicIpOnLaunch: true
+ SubnetManagedNodeC:
+  Type: AWS::EC2::Subnet
+  Properties:
+   AvailabilityZone: us-east-1c
+   VpcId: !Ref VPCManagedNode
+   CidrBlock: 192.31.48.0/20
+   MapPublicIpOnLaunch: true
+ RouteTable:
+  Type: AWS::EC2::RouteTable
+  Properties:
+   VpcId: !Ref VPCManagedNode
+ InternetRoute:
+  Type: AWS::EC2::Route
+  DependsOn: InternetGateway
+  Properties:
+   DestinationCidrBlock: 0.0.0.0/0
+   GatewayId: !Ref InternetGateway
+   RouteTableId: !Ref RouteTable
+ SubnetManagedNodeRouteTableAssociation:
+  Type: AWS::EC2::SubnetRouteTableAssociation
+  Properties:
+   RouteTableId: !Ref RouteTable
+   SubnetId: !Ref SubnetManagedNodeB
+ SubnetManagedNodeBRouteTableAssociation:
+  Type: AWS::EC2::SubnetRouteTableAssociation
+  Properties:
+   RouteTableId: !Ref RouteTable
+   SubnetId: !Ref SubnetManagedNode
+ SubnetManagedNodeCRouteTableAssociation:
+  Type: AWS::EC2::SubnetRouteTableAssociation
+  Properties:
+   RouteTableId: !Ref RouteTable
+   SubnetId: !Ref SubnetManagedNodeC
+ ManagedNodeSecurityGroup: #SG for opening the required ports on Dynatrace Managed Cluster
+  Type: AWS::EC2::SecurityGroup
+  Properties:
+   GroupDescription: "Enable HTTP Access via port 80, and open all the other ports for Managed install"
+   VpcId: !Ref VPCManagedNode
+   SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '8019'
+        ToPort: '8022'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '8443'
+        IpProtocol: tcp
+        ToPort: '8443'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '5701'
+        ToPort: '5711'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '7000'
+        ToPort: '7001'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '7199'
+        ToPort: '7199'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9042'
+        ToPort: '9042'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9200'
+        ToPort: '9200'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9300'
+        ToPort: '9300'
+        IpProtocol: tcp
+   SecurityGroupEgress:
+      - CidrIp: 52.5.224.56/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 52.200.165.10/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 52.221.165.63/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 13.228.109.33/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 34.203.81.189/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 34.205.222.178/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 54.164.42.22/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 52.1.155.152/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 54.164.49.176/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '8443'
+        ToPort: '8443'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '8019'
+        ToPort: '8022'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '5701'
+        ToPort: '5711'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '7000'
+        ToPort: '7001'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9042'
+        ToPort: '9042'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9200'
+        ToPort: '9200'
+        IpProtocol: tcp
+      - CidrIp: 0.0.0.0/0
+        FromPort: '9300'
+        ToPort: '9300'
+        IpProtocol: tcp	
+      - CidrIp: 0.0.0.0/0
+        FromPort: '7199'
+        ToPort: '7199'
+        IpProtocol: tcp	
+Outputs: #Output values which will help with installing the next CF Stack
+ PublicIpMasterNode:
+  Description: The Public IP of the Managed node master
+  Value: !GetAtt ManagedNodeMaster.PublicIp
+  Export:
+   Name: !Sub "${AWS::StackName}-PublicIpMasterNodeOut"
+ VPCManagedNodeId:
+  Value: !Ref VPCManagedNode
+  Description: The VPC ID for adding the new nodes to the VPC
+  Export:
+   Name: !Sub "${AWS::StackName}-VPCManagedNodeId"
+ SubnetManagedNodeB:
+  Value: !Ref SubnetManagedNodeB
+  Description: The ID for Subnet B to attach to Node B
+  Export:
+   Name: !Sub "${AWS::StackName}-SubnetManagedNodeB"
+ SubnetManagedNodeC:
+  Value: !Ref SubnetManagedNodeC
+  Description: The ID for Subnet C to attach to Node C
+  Export:
+   Name: !Sub "${AWS::StackName}-SubnetManagedNodeC"
+ ManagedSecurityGroupId:
+  Value: !Ref ManagedNodeSecurityGroup
+  Description: The authentication token needed for installing nodes B and C
+  Export:
+   Name: !Sub "${AWS::StackName}-ManagedSecurityGroupId"
