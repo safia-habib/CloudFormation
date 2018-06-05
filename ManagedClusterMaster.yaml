@@ -264,3 +264,8 @@ Outputs: #Output values which will help with installing the next CF Stack
   Description: The authentication token needed for installing nodes B and C
   Export:
    Name: !Sub "${AWS::StackName}-ManagedSecurityGroupId"
+ InitialPassword:
+  Value: !Sub "${InitialPassword}"
+  Description: The password for the admin account
+  Export: 
+   Name: !Sub "${AWS::StackName}-InitialPassword"
