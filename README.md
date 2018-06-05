@@ -28,3 +28,4 @@ This template uses the output from ManagedClusterMaster.yaml to add two addition
 The name of the Stack used for creation of ManagedclusterMaster.yaml 
 
 This template creates the Managed Nodes B and C and registers them to the Dynatrace Managed Cluster created. 
+**Currently this file uses the hardcoded password. The user will need to update/ add the password parameter either from output of Master file or hardcode it in the User Data section Curl command** 
