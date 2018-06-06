@@ -13,6 +13,8 @@ This CF template creates a VPC, Subnet, Security Group for a 3 Node Managed Clus
 5. Initial Email: The email address for admin, all Dynatrace Managed Events are sent to this email 
 6. Password: The password for the internal admin account which is created
 
+**However just note that the Public Key is currently hard coded in the script to USEAST1. You will have to change this before deployment or the deployment will fail** 
+
 Once all the parameters are input the Master node of the Dynatrace Managed cluster is created and joined to Dynatrace Mission Control 
 
 **This template also outputs the following parameters:** 
